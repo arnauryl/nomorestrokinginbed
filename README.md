@@ -1,0 +1,2 @@
+# nomorestrokinginbed
+Model predictiu ictus
