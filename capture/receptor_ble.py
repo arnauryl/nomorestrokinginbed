@@ -130,7 +130,7 @@ async def main():
     p.add_argument("--nom", action="append", help="nom BLE de la placa (es pot repetir)")
     p.add_argument("--etiqueta", default="sessio", help="p. ex. dreta_normal, esquerra_paresi")
     p.add_argument("--minuts", type=float, default=0, help="durada; 0 = fins a Ctrl+C")
-    p.add_argument("--carpeta", default="dades")
+    p.add_argument("--carpeta", default="data/raw")
     a = p.parse_args()
     noms = a.nom or ["ICTUS-D"]
     os.makedirs(a.carpeta, exist_ok=True)

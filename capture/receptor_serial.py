@@ -1,7 +1,7 @@
 """Captura per cable USB (port sèrie), d'una o diverses plaques alhora.
 
 Accepta els formats dels codis Arduino que ja tenim, sense tocar-los:
-  - xiao_ble_raw.ino (aquesta carpeta):  idx,ax_mg,ay_mg,az_mg        (50 Hz)
+  - firmware/xiao_ble_raw/xiao_ble_raw.ino:  idx,ax_mg,ay_mg,az_mg        (50 Hz)
   - xiao_test.ino (prototip 1):          ax<TAB>ay<TAB>az  en g       (10 Hz)
   - adxl335_reading.ino:                 tiempo_ms,xb,yb,zb,x_g,y_g,z_g (50 Hz)
 Quan la línia no porta comptador de mostres, el temps es pren del rellotge de l'ordinador.
@@ -81,7 +81,7 @@ def main():
     p.add_argument("--port", action="append", required=True, help="COM5 o COM5:D (port:nom)")
     p.add_argument("--etiqueta", default="sessio")
     p.add_argument("--minuts", type=float, default=0)
-    p.add_argument("--carpeta", default="dades")
+    p.add_argument("--carpeta", default="data/raw")
     a = p.parse_args()
     os.makedirs(a.carpeta, exist_ok=True)
     final = time.time() + a.minuts * 60 if a.minuts > 0 else float("inf")

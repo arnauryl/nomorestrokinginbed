@@ -2,26 +2,25 @@
 quina freqüència de mostreig necessitem?
 
 Fa servir model_asimetria.py (a la mateixa carpeta) per calcular MA1 i MA2.
-La gravació es fa amb "../2 Captura (ordinador)/receptor_serial.py".
+La gravació es fa amb "capture/receptor_serial.py".
 
-Ús (des d'aquesta carpeta):
-    python prova_inicial.py "../4 Dades/prova_inicial_USB1_20261117_163638.csv"
+Ús (des de l'arrel del repo):
+    python -m src.models.prova_inicial data/raw/prova_inicial_USB1_20261117_163638.csv
     # si heu començat el guió uns segons després d'engegar la gravació:
     python prova_inicial.py fitxer.csv --inici 15
 
-Guió (fases de 2 min): vegeu "00 INFORME.md". Resultats a "5 Resultats".
+Guió (fases de 2 min): vegeu "00 INFORME.md". Resultats a "results/".
 """
 
 import argparse
-import os
-import sys
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-AQUI = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, AQUI)  # en aquesta còpia, model_asimetria.py és a la mateixa carpeta
-from model_asimetria import carregar_csv, indexs_per_epoca  # noqa: E402
+from src.models.model_asimetria import carregar_csv, indexs_per_epoca
+
+RESULTATS = Path(__file__).resolve().parents[2] / "results"
 
 # (nom curt, descripció, durada en s)
 FASES = [
@@ -74,9 +73,9 @@ def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("csv")
     p.add_argument("--inici", type=float, default=0, help="segon de la gravació on comença la fase 1")
-    p.add_argument("--sortida", default=os.path.join(AQUI, "..", "5 Resultats"))
+    p.add_argument("--sortida", type=Path, default=RESULTATS)
     a = p.parse_args()
-    os.makedirs(a.sortida, exist_ok=True)
+    a.sortida.mkdir(parents=True, exist_ok=True)
 
     df = carregar_csv(a.csv)
     fs, forats = freq_efectiva(df)
@@ -98,7 +97,7 @@ def main():
                       "MA1_mg": 1000 * e["MA1"].median(), "MA2_mg": 1000 * e["MA2"].median(),
                       "MA2/MA1": e["MA2"].median() / max(e["MA1"].median(), 1e-6)})
     taula = pd.DataFrame(files)
-    taula.to_csv(os.path.join(a.sortida, "ma_per_fase.csv"), index=False)
+    taula.to_csv(a.sortida / "ma_per_fase.csv", index=False)
 
     # 2. Freqüència de mostreig: MA2 a cada freqüència, relatiu al de la freqüència original
     freqs = [f for f in FREQS if f <= fs * 1.05]
@@ -108,7 +107,7 @@ def main():
         comp[f] = e.groupby("fase")["MA2"].median() * 1000
     comp = pd.DataFrame(comp).reindex([n for n, *_ in FASES]).dropna(how="all")
     rel = comp.div(comp[freqs[0]], axis=0) * 100
-    comp.to_csv(os.path.join(a.sortida, "ma2_per_frequencia.csv"))
+    comp.to_csv(a.sortida / "ma2_per_frequencia.csv")
 
     # 3. Resum en text
     pd.set_option("display.width", 140)
@@ -135,7 +134,7 @@ def main():
             print(f"{f} Hz: en les fases amb moviment, el MA2 es desvia com a màxim un {desv:.0f}% del de {freqs[0]} Hz"
                   + (" -> suficient" if desv < 10 else " -> perd informació"))
 
-    figura(df, ep, a, os.path.join(a.sortida, "prova_inicial.png"))
+    figura(df, ep, a, a.sortida / "prova_inicial.png")
     print(f"\nResultats a {a.sortida}")
 
 
