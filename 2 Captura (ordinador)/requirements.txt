@@ -1,0 +1,5 @@
+bleak>=0.22
+numpy
+pandas
+matplotlib
+pyserial
