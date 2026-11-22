@@ -50,7 +50,35 @@ def windows(mag_l, mag_r, fs=FS, win_s=60, step_s=30):
     """mag_l, mag_r: arrays (n,) from preprocess(), same length, same time axis.
     Returns a list of (start_s, left_segment, right_segment), one per full window.
     The last incomplete window is dropped.
-
-    TODO (you).
     """
-    raise NotImplementedError
+    # Els dos senyals s'han de poder tallar amb els mateixos índexs: la mostra i de l'esquerre
+    # i la mostra i del dret han de ser del mateix instant. La sincronització en el temps es
+    # fa abans (pas a); aquí només es comprova que tinguin la mateixa longitud.
+    if len(mag_l) != len(mag_r):
+        raise ValueError(f"mag_l and mag_r must have the same length ({len(mag_l)} != {len(mag_r)})")
+
+    # Els arrays s'indexen en mostres, no en segons.
+    win = int(win_s * fs)
+    step = int(step_s * fs)
+    n = len(mag_l)
+
+    # L'última finestra completa comença a n - win; el +1 és perquè range no inclou el límit.
+    out = []
+    for start in range(0, n - win + 1, step):
+        out.append((start / fs, mag_l[start:start + win], mag_r[start:start + win]))
+    return out
+
+
+if __name__ == "__main__":
+    # Self-check de windows(): 60 s a 50 Hz, finestres de 20 s cada 10 s -> 5 finestres.
+    x = np.arange(3000, dtype=float)
+    w = windows(x, x, fs=50, win_s=20, step_s=10)
+    assert [s for s, _, _ in w] == [0, 10, 20, 30, 40]
+    assert all(len(l) == len(r) == 1000 for _, l, r in w)
+    assert len(windows(np.zeros(3100), np.zeros(3100), 50, 20, 10)) == 5  # sobren 100 mostres
+    try:
+        windows(np.zeros(3000), np.zeros(2900))
+        raise AssertionError("should have raised ValueError")
+    except ValueError:
+        pass
+    print("windows OK")
