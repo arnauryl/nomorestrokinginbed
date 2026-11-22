@@ -69,6 +69,35 @@ def windows(mag_l, mag_r, fs=FS, win_s=60, step_s=30):
     return out
 
 
+def correlation(left, right, fs=FS, max_lag_s=1.0):
+    """left, right: two segments (n,) of the same window (from windows()).
+    Returns (pearson, best_cc, best_lag_s):
+      pearson     correlation with no shift
+      best_cc     highest correlation found shifting one signal by -max_lag_s..+max_lag_s
+      best_lag_s  the shift (in seconds) where best_cc happens
+
+    TODO (you).
+    """
+    n = len(left)
+
+    assert len(left) == len(right), "Left and right do not have the same lenghts"
+    pearson = np.corrcoef(left, right)[0,1]
+
+    max_lag_samples = int(max_lag_s*fs)
+
+    for k in range(-max_lag_samples, max_lag_samples +1):
+        if k < 0: 
+            left_part = left[:n+k]
+            right_part = right[-k:]
+        else: 
+            left_part = left[:n+k]
+            right_part = right[-k:]
+
+        cc = np.corrcoef(left_part, right_part)[0,1]
+
+    return pearson, best_cc, best_lag_s
+
+
 if __name__ == "__main__":
     # Self-check de windows(): 60 s a 50 Hz, finestres de 20 s cada 10 s -> 5 finestres.
     x = np.arange(3000, dtype=float)
