@@ -75,25 +75,33 @@ def correlation(left, right, fs=FS, max_lag_s=1.0):
       pearson     correlation with no shift
       best_cc     highest correlation found shifting one signal by -max_lag_s..+max_lag_s
       best_lag_s  the shift (in seconds) where best_cc happens
-
-    TODO (you).
+                  (> 0: right is ahead, left[i + k] matches right[i])
     """
     n = len(left)
 
-    assert len(left) == len(right), "Left and right do not have the same lenghts"
+    assert len(left) == len(right), "Left and right do not have the same length"
     pearson = np.corrcoef(left, right)[0,1]
 
     max_lag_samples = int(max_lag_s*fs)
+    best_cc, pos = -np.inf, 0
 
+    # Sign convention: k > 0 -> left[i + k] is compared with right[i] (right is ahead).
     for k in range(-max_lag_samples, max_lag_samples +1):
+
         if k < 0: 
             left_part = left[:n+k]
             right_part = right[-k:]
         else: 
-            left_part = left[:n+k]
-            right_part = right[-k:]
+            left_part = left[k:]
+            right_part = right[:n-k]
 
-        cc = np.corrcoef(left_part, right_part)[0,1]
+        cc_new = np.corrcoef(left_part, right_part)[0,1]
+
+        if cc_new > best_cc:
+              best_cc, pos = cc_new, k
+
+
+    best_lag_s = pos/fs
 
     return pearson, best_cc, best_lag_s
 
@@ -111,3 +119,12 @@ if __name__ == "__main__":
     except ValueError:
         pass
     print("windows OK")
+
+        # Self-check de correlation(): el dret és l'esquerre desplaçat 10 mostres (0.2 s).
+    a = np.random.default_rng(0).normal(size=3000)
+    pearson, best_cc, best_lag_s = correlation(a, np.roll(a, 10))
+    assert abs(pearson) < 0.1       # sense desplaçar no es veu la relació
+    assert best_cc > 0.99           # amb el desplaçament sí
+    assert abs(best_lag_s) == 0.2   # i el lag és el que hem posat
+
+    print("correlation ok")
