@@ -1,31 +1,93 @@
 # nomorestrokinginbed
-Predictive stroke model: accelerometers on both wrists (XIAO BLE + ADXL335).
-Initial test of 2026-11-17.
 
-## Structure
-```
-firmware/xiao_ble_raw/   board firmware (.ino), 50 Hz raw acceleration
-capture/                 PC receivers (USB serial, BLE) -> CSV in data/raw/
-data/raw/                captured CSVs (t_s, ax, ay, az in g)
-data/processed/          derived data (ignored by git)
-src/models/              model_asimetria.py (Iacovelli asymmetry ratio), prova_inicial.py
-src/features/            (empty)
-notebooks/  docs/        (empty)
-results/                 output tables and figures
-```
+Predictive stroke model based on accelerometers worn on both wrists during sleep. The idea is simple: when a person sleeps, both arms move from time to time, and a stroke that weakens one arm should change how the two arms move relative to each other. We want to detect that change.
+
+This repository contains the material from the initial test of 2026-11-17 (firmware, capture scripts, one recording) and the two models we have built so far. The hardware is two XIAO BLE boards, one on each wrist with an ADXL335 accelerometer.
+
+Important: we do not have a recording with two wrists yet, because the prototypes are still being built. Everything about the inter-arm correlation has only been tested on synthetic data (see "Synthetic test" below), so it is not evidence that the model works on patients.
+
+## Repository structure
+
+- `firmware/xiao_ble_raw/`: board firmware (`xiao_ble_raw.ino`), which sends raw acceleration at 50 Hz. The folder has the same name as the file because the Arduino IDE requires it.
+- `capture/`: PC receivers that save the board data as CSV. `receptor_serial.py` works over USB and `receptor_ble.py` over Bluetooth.
+- `data/raw/`: captured CSVs, with the columns `t_s, ax, ay, az` (time in seconds and acceleration in g). Right now there are two files from the 2026-11-17 test, each from a single board.
+- `data/processed/`: derived data, such as the synthetic recordings. Git ignores this folder.
+- `src/models/`: the models. `model_asimetria.py` is the asymmetry ratio, `arm_correlation.py` is the inter-arm correlation, and `prova_inicial.py` is the analysis of the initial test.
+- `src/features/`: `synthetic_two_wrists.py`, which builds the synthetic two-wrist recordings.
+- `results/`: output tables and figures.
+- `notebooks/` and `docs/`: empty for now.
 
 ## Setup
+
 ```
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Run (from the repo root)
+All the commands below are run from the root of the repository.
+
+## How to run each script
+
 - Capture over USB: `python capture/receptor_serial.py --etiqueta sessio --minuts 10`
-- Capture over BLE: `python capture/receptor_ble.py --etiqueta sessio --minuts 10`
-  (both write to `data/raw/` by default; `--carpeta` to change)
-- Initial test analysis (MA1/MA2 per phase, sampling rate, figure):
-  `python -m src.models.prova_inicial data/raw/prova_inicial_USB1_20261117_163638.csv [--inici SECONDS]`
-  -> `results/`
-- `src/models/model_asimetria.py` is a library (imported, not run).
+- Capture over Bluetooth: `python capture/receptor_ble.py --etiqueta sessio --minuts 10`. Both scripts save to `data/raw/` unless you pass `--carpeta`.
+- Analysis of the initial test: `python -m src.models.prova_inicial data/raw/prova_inicial_USB1_20261117_163638.csv`. It writes `ma_per_fase.csv`, `ma2_per_frequencia.csv` and `prova_inicial.png` to `results/`. If you started the script a few seconds after the recording began, add `--inici SECONDS`.
+- Inter-arm correlation on two recordings: `python -m src.models.arm_correlation data/raw/LEFT.csv data/raw/RIGHT.csv`. The options are `--win` (window length in seconds, 60 by default), `--step` (seconds between window starts, 30), `--lag` (maximum lag in seconds, 1.0), `--threshold` (0.5), `--noise` (noise floor in g, 0.015) and `--out` (output folder, `results/`). It prints one row per window and saves `arm_correlation_windows.csv` and `arm_correlation.png`.
+- Self-check of the correlation model: `python -m src.models.arm_correlation` with no arguments. It runs the tests of every function and prints `all OK`.
+- Synthetic recordings: `python -m src.features.synthetic_two_wrists`. It writes `synth_healthy`, `synth_stroke_mild` and `synth_stroke_severe` (each with an `_L` and an `_R` file) to `data/processed/`.
 - Firmware: open `firmware/xiao_ble_raw/xiao_ble_raw.ino` in the Arduino IDE.
+
+## The initial test (2026-11-17)
+
+We recorded 13 minutes with one board on the wrist at 50 Hz, doing six activities of 2 minutes each: board on the table, arm still, wrist rotations, arm up and down with a flat wrist, free movements, and arm still again. The goal was to see whether the movement index (MA2, explained below) picks up wrist rotations, how much noise the sensor has, and which sampling rate we need. The results are in `results/ma_per_fase.csv`, `results/ma2_per_frequencia.csv` and `results/prova_inicial.png`.
+
+## Model 1: asymmetry ratio (`model_asimetria.py`)
+
+This model follows Iacovelli et al. 2019, "Actigraphic measurement of the upper limbs movements in acute stroke patients" (J NeuroEng Rehabil 16:153, doi:10.1186/s12984-019-0603-z), which uses the method of Rabuffetti.
+
+- Activity indices: for each arm and each 1 minute epoch we compute MA1 (the standard deviation of the acceleration magnitude, so only linear movement) and MA2 (the magnitude of the vector made of the standard deviations of x, y and z, so linear movement plus rotations). The paper finds that MA2 is the useful one for patients in bed, because it detects the pronation and supination of the forearm, which is almost the only movement a mildly paretic arm can still do.
+- Asymmetry ratio (AR): one point per epoch, with MA2 of the right arm on one axis and MA2 of the left arm on the other. We fit a line through the origin, take its angle θ, and compute `AR = (45° − θ) / 45° · 100`. A value of 0 means symmetric, +100 means only the right arm moves (suspected left paresis) and −100 means only the left arm moves.
+- Adaptation to sleep: during sleep the arms rarely move at the same time, so the line fit sticks to one axis and the ratio jumps to ±100 even in healthy people. We keep the same scale and angle, but compute them from the total activity of each arm over the window.
+- Detector: AR in moving windows of 1 hour recalculated every 5 minutes, a baseline for each patient learned from normal nights, windows with little movement marked as not informative, whole body movements (turning in bed) removed, and an alarm only if the deviation lasts 20 minutes in the same direction.
+
+This model has not been run on a night recording yet. `prova_inicial.py` only uses its functions for the activity indices.
+
+## Model 2: inter-arm correlation (`arm_correlation.py`)
+
+The idea: if one arm stops moving in sync with the other, the correlation between the movement of the two wrists drops. It works in four steps, each one a function.
+
+1. `preprocess`: turns the raw acceleration of one wrist (`ax, ay, az`) into one number per sample that says how much the arm is moving. A sensor always feels gravity (about 1 g), and the movement we want to see during the night is one or two orders of magnitude smaller, so gravity has to go. Gravity is also not constant: when the wrist rotates, it is shared differently between the three axes. For that reason we apply a high-pass filter (a filter that blocks slow changes and lets faster ones pass) to each axis, with a cutoff of 0.3 Hz, and only then take the magnitude `sqrt(ax² + ay² + az²)`. Subtracting the mean would not be enough, because it removes a fixed value and not a slow change. We use `sosfiltfilt`, which filters forwards and backwards, so it adds no time delay between the two wrists. The price is that it cannot run in real time as it is. `results/preprocess_real_data.png` shows the result on the real recording: still phases stay close to zero and the wrist rotations are the tallest.
+2. `windows`: cuts both signals at the same moments into windows (1 to 5 minutes, 60 s by default) with a step between starts (30 s by default, so consecutive windows overlap). It needs both signals to have the same length and drops the last window if it is incomplete. A window gives one correlation value, so a short episode is not diluted in a whole night, and we can see when it happened. Short windows react faster but are noisier, long windows are steadier but slower.
+3. `correlation`: for each window it returns three numbers. `pearson` is the correlation with no shift, from −1 to +1, and it only compares the shape of the two signals, not their size. `best_cc` is the highest Pearson found after sliding one signal against the other by up to ±1 s, which allows for the natural delay between the arms (if the right arm repeats the left movement 0.3 s later, plain Pearson would be low even though the arms are in sync). `best_lag_s` is the shift where that maximum happens, and a positive value means the right arm is ahead. The maximum lag must stay small: with a large one, unrelated movements start to match and the score is meaninglessly high. Taking the best of many shifts also raises the value a little even for unrelated signals, so `best_cc` has to be compared with a threshold measured in the same way.
+4. `classify`: labels each window as "not informative", "normal" or "suspect". First an activity gate: if neither arm is above the noise floor, the correlation is only noise, so the window is not informative. It is enough that one arm moves, because the case we look for is one arm moving and the other not. Then, if `best_cc` is below the threshold, the window is suspect.
+
+`analyze` chains the four steps and returns a table with one row per window (start time, `pearson`, `best_cc`, `best_lag_s`, mean movement of each arm and label). `plot` draws `best_cc` over time, coloured by label, together with the movement of each arm. `load_and_sync` reads the two CSVs and trims them to the same length.
+
+Values that still have to be set:
+- Threshold (0.5): a placeholder. It should be set just below the normal range, measured on healthy recordings.
+- Noise floor (0.015 g): taken from the initial test, where a still sensor reads about 15 mg. The still windows of that recording had a mean between 0.013 and 0.018 g, which is too close to the floor, because the same situation flips between "not informative" and "normal". For that board a value around 0.03 g works better, but it has to be confirmed with the new prototypes.
+- Synchronisation: `load_and_sync` assumes that both boards started recording together and at the same rate, and it only trims to the shorter one. It prints a warning if they differ by more than 2 s. If the boards do not start together, we need a real synchronisation, for example a tap on both wrists at the start.
+
+## Synthetic test
+
+Since there is no two-wrist data, `src/features/synthetic_two_wrists.py` builds it from the real recording. The left wrist is the real recording. The right wrist is 70% of the left movement delayed by 0.16 s plus 30% of independent movement (the same recording shifted in time), with a different gravity orientation and a little sensor noise. For the stroke versions, the right arm movement is multiplied by 0.4 (mild) or 0.1 (severe) from minute 6. The 70/30 mix, the delay and the onset are our assumptions, not measurements.
+
+We ran `analyze` with the noise floor at 0.03 g and compared the 12 informative windows after the onset. The share of windows flagged as suspect was:
+
+- Threshold 0.3: 25% in the healthy recording, 33% in the mild stroke and 58% in the severe stroke.
+- Threshold 0.5: 33% healthy, 33% mild and 67% severe.
+- Threshold 0.7: 42% healthy, 50% mild and 92% severe.
+- Mean `best_cc`: 0.61 healthy, 0.53 mild and 0.32 severe.
+
+What we conclude:
+- A severe weakness is partly detected: the mean correlation drops, but the healthy recording also has flagged windows, so the margin is small. One window means little, and we would need several in a row, which `classify` does not do yet.
+- A mild weakness is not detected. Pearson compares shape and not size, so an arm that makes the same movements with 40% of the strength still correlates well. This comes from how the correlation works, whatever the data.
+- The healthy recording has false alarms: when one arm moves while the other is still, the model reads it as a stroke pattern. Real healthy people also do this, but our way of building the right arm may exaggerate it.
+
+The test is also circular: we wrote the right arm to follow the left, and then checked whether the model notices when it stops following. It shows that the code works and what the correlation can and cannot see, but not that it works on a patient. Only real two-wrist recordings can show that.
+
+## Not done yet
+
+- Step (d) of the plan, a table comparing the correlation model with the asymmetry ratio (windows and mean values per phase), because it needs two-wrist data.
+- Calibration of the threshold and the noise floor with healthy recordings.
+- A real synchronisation between the two boards.
+- Running the asymmetry ratio model on a night recording.
