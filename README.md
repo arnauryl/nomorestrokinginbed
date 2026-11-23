@@ -2,7 +2,7 @@
 
 Predictive stroke model based on accelerometers worn on both wrists during sleep. The idea is simple: when a person sleeps, both arms move from time to time, and a stroke that weakens one arm should change how the two arms move relative to each other. We want to detect that change.
 
-This repository contains the material from the initial test of 2026-11-17 (firmware, capture scripts, one recording) and the two models we have built so far. The hardware is two XIAO BLE boards, one on each wrist with an ADXL335 accelerometer.
+This repository contains the material from the initial test of 2026-11-17 (firmware, capture scripts, one recording) and the two models we have built so far. The hardware is two XIAO BLE Sense boards (nRF52840), one on each wrist. According to the firmware, each board reads its onboard LSM6DS3 accelerometer at 50 Hz and sends every sample over Bluetooth Low Energy (BLE). The ADXL335 does not appear anywhere in the repository files.
 
 Important: we do not have a recording with two wrists yet, because the prototypes are still being built. Everything about the inter-arm correlation has only been tested on synthetic data (see "Synthetic test" below), so it is not evidence that the model works on patients.
 
@@ -84,6 +84,31 @@ What we conclude:
 - The healthy recording has false alarms: when one arm moves while the other is still, the model reads it as a stroke pattern. Real healthy people also do this, but our way of building the right arm may exaggerate it.
 
 The test is also circular: we wrote the right arm to follow the left, and then checked whether the model notices when it stops following. It shows that the code works and what the correlation can and cannot see, but not that it works on a patient. Only real two-wrist recordings can show that.
+
+## Architecture: where the model should run
+
+We want an app on a phone that, when the model sees a possible stroke, wakes the patient and asks them to do some activities that assess their cognitive abilities. The question is where the model runs. This is a proposal, we have not built or tested any of it.
+
+How the data travels today: the firmware sends a 20 byte packet (a counter plus three consecutive samples of x, y and z in mg), about 17 packets per second per board. That is a small amount of data for BLE.
+
+Proposal: the model runs on the phone, and the boards only stream their data.
+
+- Both wrists are needed in one place: each board only sees its own arm and the two boards do not talk to each other, so the correlation can only be computed where both streams arrive, which is the phone.
+- Room for the model: the model is small, but the board already has to sample at 50 Hz and keep Bluetooth running, and it has little memory.
+- The model will keep changing: the threshold, the noise floor and the window length are still to be set. An app update is easier than reflashing two boards each time.
+- The alert is on the phone: the phone wakes the patient and runs the activities, so the decision and the action are in the same place.
+
+Alternatives:
+- Board that processes everything: it would need a third device (a hub) that talks to both boards and then to the phone. It adds hardware, a power supply and one more thing to debug, so we would only consider it if the phone cannot stay connected all night.
+- Step 1 on the boards: if streaming at 50 Hz drains the batteries too much, each board could run `preprocess` and send one value per second, and the phone would do the rest. Then `sosfiltfilt` has to become a live filter (`sosfilt`), which adds some delay, and we would need to check that the correlation does not change much. The clocks of the two boards still have to line up.
+
+Risks we have not solved:
+- Overnight connection: the phone has to stay connected to both boards for a whole night, and iOS and Android limit Bluetooth in the background. If the connection drops, the model must not read missing data as an arm that stopped.
+- False alarms: waking a patient by mistake is costly. In the synthetic test, the healthy recording also had windows flagged as suspect, so the app would need several suspect windows in a row before it wakes anyone, and `classify` does not do that yet.
+- Language: the model is in Python, so the app needs it rewritten (for example in Kotlin or Swift). It is a few lines, but it has to be checked against the Python version with the same recordings.
+- Validation: none of this has been tested on real two-wrist data.
+
+For now: raw stream to the phone, model developed in Python on recordings, and the decision about on-board processing after we know how long the batteries last.
 
 ## Not done yet
 
