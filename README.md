@@ -116,3 +116,32 @@ For now: raw stream to the phone, model developed in Python on recordings, and t
 - Calibration of the threshold and the noise floor with healthy recordings.
 - A real synchronisation between the two boards.
 - Running the asymmetry ratio model on a night recording.
+
+## Rule-based detector (`src/models/rule_detector.py`)
+
+**All the numbers in this section come from synthetic data (datos sintéticos). They only check that the logic works; they are not clinical evidence.**
+
+Why it replaces the correlation as the main signal: Pearson does not change if a signal is multiplied by 0.1, so it cannot measure how much each arm moves (`tests/test_rule_detector.py` shows it), and a healthy person scratching with one hand gives low correlation. The main signal is now the movement asymmetry (Iacovelli 2019, Reale 2023, Messé 2023), counted per movement bout, and evidence is accumulated over the night. Still arms add nothing, and one suspicious window wakes nobody up.
+
+Pipeline: `load_and_sync` → `preprocess` (+ gravity) → bouts → window features → CUSUM accumulator → alarms.
+
+- `python -m src.features.noise_floor`: noise floor = mean + 3 std of 1 s block means of the gravity-free magnitude in the "quiet" and "final" phases (about 0.050 g). Writes `results/noise_floor.json`, used by default everywhere.
+- `src/features/bouts.py`: bouts (arm above the floor, gaps < 2 s merged, runs < 3 s dropped) classified `left_only` / `right_only` / `both` (overlap ≥ 50 % of the shorter), with amplitude and orientation change per wrist.
+- `src/features/window_features.py`: per 60 s window (30 s step): `act_l, act_r, asym, pearson, best_cc, best_lag_s, orient_change_l/r, n_bouts_*`. Correlation is only computed in windows where an arm is active.
+- `src/models/evidence_accumulator.py`: one one-sided CUSUM per side, `S = max(0, S + e − k)`, alarm when `S > h`, then reset and 30 min pause. Each parameter is documented in the file. `Params.ref_ratio` is the hook for a per-patient baseline.
+- `python -m src.models.rule_detector LEFT.csv RIGHT.csv [--floor G --k K --h H --pause MIN --title T --out DIR]`: writes `rule_detector_{windows,bouts,curve,alarms}.csv` and `rule_detector.png` (activity, bouts by type, accumulator with threshold and alarms).
+- `python -m src.features.synthetic_nights --seeds 0 1 --rate 5 [--stroke]`: 8 h two-wrist nights built from fragments of the real recording (CSV per wrist + JSON with seed, rate, dominance, onset, side, severity). Same seed, same night. Writes to `data/processed/synthetic_nights/` (about 45 MB per wrist).
+- `python -m src.eval.evaluate_detector [--nights 50 --rates 2 5 10 20]`: 50 healthy + 50 stroke nights per bout rate, sweep of `h`, comparison with the correlation classifier (alarm after N consecutive suspect windows). Writes `results/eval_synthetic/`: `nights.csv` (one row per night), `sweep.csv`, `summary.csv`, `fa_vs_delay.png`, `fa_vs_detection.png`, `example_night.png`. Takes about 5 min.
+- Tests: `python -m pytest`.
+
+Chosen by eye, not fitted: `k = 0.5`, `h = 4`, evidence weights (±1, −0.5), `weak_ratio = 0.3`, `ok_ratio = 0.5`, bout minimum 3 s, 30 min pause, correlation baseline N = 5.
+
+Prepared but not done: `align_by_clap` (sync with a clap), an optional per-patient reference in the accumulator, and the window features as inputs for a future XGBoost/RF.
+
+## Limitations
+
+- Everything is synthetic, built from 13 minutes of one healthy, awake person with one board. Movement amplitudes and shapes are those of that person awake.
+- The movement rate during sleep is an assumption (2–20 bouts/h tested), as are the proportions of bilateral and one-arm events, the dominance range, and the stroke model (severity 5–60 %, abrupt or ramped).
+- Circularity is reduced (each arm uses different fragments, stroke only scales amplitude) but not eliminated: the detector is tested against the same kind of movement that generated the nights.
+- The quiet base is resampled from only 200 s of real data, so its noise bouts (about 5/h) repeat the statistics of those 200 s.
+- The two boards are assumed to be synchronized (trimmed to the same length).
