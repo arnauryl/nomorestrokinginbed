@@ -69,3 +69,16 @@ def test_prova_inicial_unchanged(tmp_path):
                     "--sortida", str(tmp_path)], cwd=ROOT, check=True, capture_output=True)
     for name in ("ma_per_fase.csv", "ma2_per_frequencia.csv"):
         pd.testing.assert_frame_equal(pd.read_csv(tmp_path / name), pd.read_csv(ROOT / "results" / name))
+
+
+def test_small_bouts_and_turns():
+    from src.models.evidence_accumulator import Params, run
+    def bouts(**kw):
+        row = dict(start_s=0., dur_s=10., kind="both", amp_l=0.02, amp_r=0.3, orient_l=0., orient_r=0.)
+        return pd.DataFrame([{**row, **kw}] * 20).assign(start_s=lambda d: np.arange(20) * 20.)
+    p = Params(h=3)
+    assert len(run(bouts(), p)[1]) >= 1                                  # weak left arm in 20 normal bouts: alarm
+    assert run(bouts(amp_l=0.001, amp_r=0.02), p)[0].empty               # both tiny: ignored
+    assert run(bouts(orient_l=60., orient_r=60.), p)[1].empty            # body turn (no chest): weak evidence off
+    assert run(bouts().assign(chest_turn=True), p)[1].empty              # chest sensor says turn
+    assert len(run(bouts(orient_l=60., orient_r=10.), p)[1]) >= 1        # only one wrist rotates: not a turn

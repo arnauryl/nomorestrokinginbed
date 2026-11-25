@@ -23,7 +23,7 @@ import pandas as pd
 
 from src.features.synthetic_nights import make_night
 from src.models.evidence_accumulator import Params, run
-from src.models.rule_detector import extract
+from src.models.rule_detector import extract, mark_chest_turns
 
 OUT = Path(__file__).resolve().parents[2] / "results/eval_synthetic"
 H_SWEEP = [1, 2, 3, 4, 5, 6, 8, 10, 12, 16]
@@ -50,9 +50,11 @@ def one_night(job):
     rate, stroke, seed, hours = job
     acc_l, acc_r, p = make_night(seed, rate, hours, stroke)
     win, bouts = extract(acc_l, acc_r)
-    p.pop("events")
+    turns = [(t, t + d) for t, k, d in p.pop("events") if k == "bilateral"]   # IDEAL chest sensor: every posture change seen
+    chest = mark_chest_turns(bouts, turns)
     return {"rate": rate, "stroke": stroke, "seed": seed, "params": p, "n_bouts": len(bouts),
             "rule": {h: run(bouts, Params(h=h))[1] for h in H_SWEEP},
+            "rule_chest": {h: run(chest, Params(h=h))[1] for h in H_SWEEP},
             "corr": {n: corr_alarms(win, n) for n in N_SWEEP}}
 
 
@@ -106,9 +108,11 @@ def main():
                 **{f"n_{k}": v for k, v in p["n_events"].items()}, **(p["stroke"] or {})}
         nights.append({**base,
                        **{f"rule_{k}": v for k, v in score(r["rule"][H_DEFAULT]["t_s"], r["rule"][H_DEFAULT]["side"].tolist(), p).items()},
+                       **{f"chest_{k}": v for k, v in score(r["rule_chest"][H_DEFAULT]["t_s"], r["rule_chest"][H_DEFAULT]["side"].tolist(), p).items()},
                        **{f"corr_{k}": v for k, v in score(r["corr"][N_DEFAULT], None, p).items()}})
-        for h, al in r["rule"].items():
-            long.append({"model": "rule", "param": h, "rate": r["rate"], "stroke": r["stroke"], **score(al["t_s"], al["side"].tolist(), p)})
+        for m in ("rule", "rule_chest"):
+            for h, al in r[m].items():
+                long.append({"model": m, "param": h, "rate": r["rate"], "stroke": r["stroke"], **score(al["t_s"], al["side"].tolist(), p)})
         for n, al in r["corr"].items():
             long.append({"model": "correlation", "param": n, "rate": r["rate"], "stroke": r["stroke"], **score(al, None, p)})
     pd.DataFrame(nights).to_csv(a.out / "nights.csv", index=False)
@@ -117,7 +121,7 @@ def main():
                       ignore_index=True)[["model", "param", "rate", "n_healthy", "n_stroke", "false_alarms_per_night",
                                           "detected_frac", "delay_median_min", "delay_q25_min", "delay_q75_min"]]
     sweep.to_csv(a.out / "sweep.csv", index=False)
-    defaults = sweep[((sweep.model == "rule") & (sweep.param == H_DEFAULT)) | ((sweep.model == "correlation") & (sweep.param == N_DEFAULT))]
+    defaults = sweep[((sweep.model.str.startswith("rule")) & (sweep.param == H_DEFAULT)) | ((sweep.model == "correlation") & (sweep.param == N_DEFAULT))]
     defaults.to_csv(a.out / "summary.csv", index=False)
     figures(sweep, a.out)
     example(a)
@@ -138,7 +142,7 @@ def figures(sweep, out):
                                ("detected_frac", "fraction of stroke nights detected", "fa_vs_detection.png")):
         fig, axes = plt.subplots(1, len(rates), figsize=(4 * len(rates), 4), sharey=True, squeeze=False)
         for ax, rate in zip(axes[0], rates):
-            for model, color, label in (("rule", "tab:blue", "rule detector (h)"), ("correlation", "tab:orange", "correlation (N windows)")):
+            for model, color, label in (("rule", "tab:blue", "rule detector (h)"), ("rule_chest", "tab:green", "rule + ideal chest sensor (h)"), ("correlation", "tab:orange", "correlation (N windows)")):
                 d = sweep[(sweep.model == model) & (sweep.rate == rate)].sort_values("param")
                 ax.plot(d["false_alarms_per_night"], d[ycol], "o-", color=color, label=label)
                 for _, r in d.iterrows():

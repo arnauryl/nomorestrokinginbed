@@ -134,6 +134,8 @@ Pipeline: `load_and_sync` → `preprocess` (+ gravity) → bouts → window feat
 - `python -m src.eval.evaluate_detector [--nights 50 --rates 2 5 10 20]`: 50 healthy + 50 stroke nights per bout rate, sweep of `h`, comparison with the correlation classifier (alarm after N consecutive suspect windows). Writes `results/eval_synthetic/`: `nights.csv` (one row per night), `sweep.csv`, `summary.csv`, `fa_vs_delay.png`, `fa_vs_detection.png`, `example_night.png`. Takes about 5 min.
 - Tests: `python -m pytest`.
 
+Bouts where both arms are under `min_amp` (30 mg above the floor) are ignored. In a whole-body turn (both wrists rotate more than 30°, or `chest_turn` from a chest sensor via `mark_chest_turns`) the "weak arm" evidence is switched off (`w_both_weak_turn = 0`). The evaluation also runs `rule_chest`, an IDEAL chest sensor that flags every posture change.
+
 Chosen by eye, not fitted: `k = 0.5`, `h = 4`, evidence weights (±1, −0.5), `weak_ratio = 0.3`, `ok_ratio = 0.5`, bout minimum 3 s, 30 min pause, correlation baseline N = 5.
 
 Prepared but not done: `align_by_clap` (sync with a clap), an optional per-patient reference in the accumulator, and the window features as inputs for a future XGBoost/RF.

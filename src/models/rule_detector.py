@@ -34,6 +34,14 @@ def detect(acc_l, acc_r, floor=None, params=None, fs=FS):
     return {"windows": windows_df, "bouts": bouts, "curve": curve, "alarms": alarms}
 
 
+def mark_chest_turns(bouts, intervals):
+    """Adds a `chest_turn` column (bout overlaps a whole-body turn seen by the chest sensor).
+    intervals: list of (start_s, end_s). The accumulator then uses it instead of the wrist orientation."""
+    bouts = bouts.copy()
+    bouts["chest_turn"] = [any(a < st + d and b > st for a, b in intervals) for st, d in zip(bouts["start_s"], bouts["dur_s"])]
+    return bouts
+
+
 def align_by_clap(acc_l, acc_r, fs=FS, search_s=30):
     """Not used yet (load_and_sync only trims). Aligns the two boards with a clap: the wearer claps
     at the start, so the largest acceleration peak of each wrist in the first `search_s` seconds is

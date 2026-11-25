@@ -15,6 +15,8 @@ Evidence for the watched arm ("self") vs the other arm ("contra"):
                                                   the body moved the arm, the arm did not)
   both move, similar amplitude . + w_both_ok      (negative; similar = ratio within ok_ratio..1/ok_ratio)
   anything else ................ 0
+Bouts where both arms are below `min_amp` are skipped. In a whole-body turn (chest sensor, or both
+wrists rotating more than `turn_deg`) the "weak" evidence becomes w_both_weak_turn (0 by default).
 All weights, k, h and the ratios are placeholders chosen by eye (no real nights exist).
 """
 
@@ -35,10 +37,13 @@ class Params:
     weak_ratio: float = 0.3       # both-bout: self amplitude / contra amplitude below this = weak
     ok_ratio: float = 0.5         # ratio within [ok_ratio, 1/ok_ratio] = similar
     pause_s: float = 30 * 60      # silence after an alarm
+    min_amp: float = 0.03         # g above the floor: bouts where BOTH arms are weaker than this are ignored (noise, tiny movements)
+    turn_deg: float = 30.0        # a bout is a whole-body turn if both wrists change orientation more than this (no chest sensor)
+    w_both_weak_turn: float = 0.0 # evidence for "weak" in a turn: the body drags the arm, so low amplitude says little
     ref_ratio: float = 1.0        # optional per-patient baseline: usual amp_l / amp_r (e.g. from 2 weeks of nights)
 
 
-def evidence(kind, amp_self, amp_contra, p, ref=1.0):
+def evidence(kind, amp_self, amp_contra, p, ref=1.0, turn=False):
     """Evidence e_t of one bout for the watched arm. `ref` = usual amp_self / amp_contra of this patient."""
     if kind == "self_only":
         return p.w_self_only
@@ -48,7 +53,7 @@ def evidence(kind, amp_self, amp_contra, p, ref=1.0):
         return 0.0
     ratio = amp_self / amp_contra / ref
     if ratio < p.weak_ratio:
-        return p.w_both_weak
+        return p.w_both_weak_turn if turn else p.w_both_weak
     return p.w_both_ok if p.ok_ratio <= ratio <= 1 / p.ok_ratio else 0.0
 
 
@@ -62,14 +67,16 @@ def run(bouts, p=None):
     curve, alarms = [], []
     for b in bouts.itertuples():
         t = b.start_s + b.dur_s
-        if t < pause_until:
+        if t < pause_until or max(b.amp_l, b.amp_r) < p.min_amp:
             continue
+        # whole-body turn: from the chest sensor if the bouts have a `chest_turn` column, else from both wrists' orientation
+        turn = bool(b.chest_turn) if hasattr(b, "chest_turn") else min(b.orient_l, b.orient_r) > p.turn_deg
         for side in S:
             mine, other = ("l", "r") if side == "left" else ("r", "l")
             kind = "both" if b.kind == "both" else "self_only" if b.kind == f"{side}_only" else "contra_only"
             amp_s, amp_c = getattr(b, f"amp_{mine}"), getattr(b, f"amp_{other}")
             ref = p.ref_ratio if side == "left" else 1 / p.ref_ratio
-            S[side] = max(0.0, S[side] + evidence(kind, amp_s, amp_c, p, ref) - p.k)
+            S[side] = max(0.0, S[side] + evidence(kind, amp_s, amp_c, p, ref, turn) - p.k)
         curve.append((t, S["left"], S["right"]))
         side = max(S, key=S.get)
         if S[side] > p.h:
