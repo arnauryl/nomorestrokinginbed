@@ -1,0 +1,12 @@
+{
+  "floor_g": 0.04984893034479025,
+  "mean_g": 0.01588642879679307,
+  "std_g": 0.011320833849332393,
+  "n_sigma": 3.0,
+  "n_blocks": 200,
+  "phases": [
+    "quiet",
+    "final"
+  ],
+  "source": "prova_inicial_USB1_20261117_163638.csv"
+}
