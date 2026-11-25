@@ -47,7 +47,7 @@ def _active(blocks, floor, merge_gap_s, min_dur_s):
 
 
 def find_bouts(mag_l, mag_r, grav_l, grav_r, floor=None, fs=FS,
-               merge_gap_s=2, min_dur_s=2, min_overlap=0.5):
+               merge_gap_s=2, min_dur_s=3, min_overlap=0.5):
     """mag_*: preprocess() output; grav_*: gravity() output. Returns a DataFrame (COLUMNS),
     one row per bout: start and duration (s), kind, amplitude of each arm (mean activity above
     the floor over its own active blocks, g) and orientation change of each wrist (degrees)."""

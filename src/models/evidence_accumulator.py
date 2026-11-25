@@ -26,8 +26,8 @@ import pandas as pd
 
 @dataclass
 class Params:
-    k: float = 0.25               # CUSUM drift: evidence per bout needed just to stay level
-    h: float = 4.0                # alarm threshold, in units of w_* (about 4 net suspicious bouts)
+    k: float = 0.5                # CUSUM drift: evidence per bout that is forgiven (bigger = fewer false alarms, slower)
+    h: float = 4.0                # alarm threshold, in units of w_* (about 4 net suspicious bouts above the drift k)
     w_contra_only: float = 1.0
     w_self_only: float = -1.0
     w_both_weak: float = 1.0
