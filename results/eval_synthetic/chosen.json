@@ -1,0 +1,7 @@
+{
+ "k": 0.25,
+ "h": 8.0,
+ "corr_N": 5,
+ "max_fa": 0.1,
+ "chosen_on": "tune nights, seeds (1000, 5000)"
+}

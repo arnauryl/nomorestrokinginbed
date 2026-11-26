@@ -3,6 +3,8 @@ Usage (repo root): python -m src.eval.explain_figures"""
 
 from pathlib import Path
 
+import json
+
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -78,11 +80,14 @@ def main():
     fig.tight_layout(); fig.savefig(DEST / "4_bout_sizes.png", dpi=130); plt.close(fig)
 
     # 5. trade-off: before filters, now, correlation
-    now, old = pd.read_csv(OUT / "sweep.csv"), pd.read_csv(OUT / "sweep_v1_before_filters.csv")
+    chosen = json.loads((OUT / "chosen.json").read_text())
+    now = pd.read_csv(OUT / "test/sweep.csv")
+    now = now[(now.model != "rule") | (now.k == chosen["k"])]          # one curve: the k chosen on the tune nights
+    old = pd.read_csv(OUT / "sweep_v1_before_filters.csv")             # earlier version (k=0.5, no filters), tune seeds
     rates = sorted(now.rate.unique())
     fig, axes = plt.subplots(1, len(rates), figsize=(4 * len(rates), 4), sharey=True)
     for ax, rate in zip(axes, rates):
-        for df, m, lab, c in ((old, "rule", "before filters", "tab:gray"), (now, "rule", "now", "tab:blue"), (now, "correlation", "correlation", "tab:orange")):
+        for df, m, lab, c in ((old, "rule", "before filters (tune nights)", "tab:gray"), (now, "rule", f"now, k={chosen['k']:g} (test nights)", "tab:blue"), (now, "correlation", "correlation", "tab:orange")):
             d = df[(df.model == m) & (df.rate == rate)].sort_values("param")
             ax.plot(d.false_alarms_per_night, d.detected_frac, "o-", color=c, label=lab, ms=4)
         ax.set_xlim(-0.2, 4); ax.set_title(f"{rate:g} bouts/h"); ax.set_xlabel("false alarms per healthy night")
