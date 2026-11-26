@@ -53,7 +53,7 @@ def align_by_clap(acc_l, acc_r, fs=FS, search_s=30):
     return acc_l[:m], acc_r[:m]
 
 
-def plot(res, path, h=Params.h, title=""):
+def plot(res, path, h=Params.h, title="", onset_s=None):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -76,6 +76,10 @@ def plot(res, path, h=Params.h, title=""):
     for t, side in al.itertuples(index=False):
         a3.axvline(t / 60, color="tab:red", lw=1.5)
         a3.text(t / 60, h, f" alarm {side}", color="tab:red", rotation=90, va="bottom")
+    if onset_s is not None:
+        for ax in (a1, a2, a3):
+            ax.axvline(onset_s / 60, color="k", ls=":", lw=1.5)
+        a1.text(onset_s / 60, a1.get_ylim()[1], " stroke onset", va="top")
     a3.set_ylabel("accumulated evidence")
     a3.set_xlabel("time (min)")
     a3.legend(loc="upper right")
