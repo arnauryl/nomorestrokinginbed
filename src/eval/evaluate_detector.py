@@ -47,14 +47,14 @@ def corr_alarms(win, n_suspect, threshold=0.5, pause_s=1800):
 
 
 def one_night(job):
-    rate, stroke, seed, hours = job
+    rate, stroke, seed, hours, w_turn = job
     acc_l, acc_r, p = make_night(seed, rate, hours, stroke)
     win, bouts = extract(acc_l, acc_r)
     turns = [(t, t + d) for t, k, d in p.pop("events") if k == "bilateral"]   # IDEAL chest sensor: every posture change seen
     chest = mark_chest_turns(bouts, turns)
     return {"rate": rate, "stroke": stroke, "seed": seed, "params": p, "n_bouts": len(bouts),
-            "rule": {h: run(bouts, Params(h=h))[1] for h in H_SWEEP},
-            "rule_chest": {h: run(chest, Params(h=h))[1] for h in H_SWEEP},
+            "rule": {h: run(bouts, Params(h=h, w_both_weak_turn=w_turn))[1] for h in H_SWEEP},
+            "rule_chest": {h: run(chest, Params(h=h, w_both_weak_turn=w_turn))[1] for h in H_SWEEP},
             "corr": {n: corr_alarms(win, n) for n in N_SWEEP}}
 
 
@@ -91,12 +91,13 @@ def main():
     ap.add_argument("--nights", type=int, default=50, help="healthy and stroke nights per rate")
     ap.add_argument("--rates", type=float, nargs="+", default=[2, 5, 10, 20], help="bouts per hour")
     ap.add_argument("--hours", type=float, default=8)
+    ap.add_argument("--w-turn", type=float, default=0.0, help="evidence for a weak arm during a whole-body turn")
     ap.add_argument("--workers", type=int, default=None)
     ap.add_argument("--out", type=Path, default=OUT)
     a = ap.parse_args()
     a.out.mkdir(parents=True, exist_ok=True)
 
-    jobs = [(r, s, (5000 if s else 1000) + i, a.hours) for r in a.rates for s in (False, True) for i in range(a.nights)]
+    jobs = [(r, s, (5000 if s else 1000) + i, a.hours, a.w_turn) for r in a.rates for s in (False, True) for i in range(a.nights)]
     with Pool(a.workers) as pool:
         res = pool.map(one_night, jobs, chunksize=1)
 
